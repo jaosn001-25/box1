@@ -1,21 +1,12 @@
 #!/bin/sh
-echo "========== 环境变量检查 =========="                                                                             
-echo "大写 UUID: ${UUID:-<未设置>} | 小写 uuid: ${uuid:-<未设置>}"                                                    
-echo "大写 VMPT: ${VMPT:-<未设置>} | 小写 vmpt: ${vmpt:-<未设置>}"                                                    
-echo "大写 ARGO: ${ARGO:-<未设置>} | 小写 argo: ${argo:-<未设置>}"                                                    
-echo "大写 AGN : ${AGN:-<未设置>}  | 小写 agn : ${agn:-<未设置>}"                                                     
-echo "大写 CFIP: ${CFIP:-<未设置>} | 小写 cfip: ${cfip:-<未设置>}"                                                    
-echo "=================================="       
 export LANG=en_US.UTF-8
-export uuid=${UUID:-${uuid}}
-export vmpt=${VMPT:-${vmpt}}
-export vwpt=${VMPT:-${VWPT:-${vwpt}}}
-export argo=${ARGO:-${argo}}
-export agn=${AGN:-${agn}}
-export agk=${AGK:-${agk}}
-export cfip=${CFIP:-${cfip}}
-export ippz=${IPPZ:-${ippz}}
-export name=${NAME:-${name}}
+export uuid=${uuid}
+export vmpt=${vmpt}
+export argo=${argo}
+export agn=${agn}
+export agk=${agk}
+export ippz=${ippz}
+export name=${name}
 v46url="https://icanhazip.com"
 
 showmode(){
@@ -81,31 +72,29 @@ EOF
 insuuid
 }
 
-addvlessws(){
-if [ -n "$vwpt" ]; then
-echo "$vwpt" > "$HOME/agsbx/vwpt"
-vwpt=$(cat "$HOME/agsbx/vwpt")
-echo "Vless-ws端口：$vwpt"
+addvmessws(){
+if [ -n "$vmpt" ]; then
+echo "$vmpt" > "$HOME/agsbx/vmpt"
+vmpt=$(cat "$HOME/agsbx/vmpt")
+echo "Vmess-ws端口：$vmpt"
 cat >> "$HOME/agsbx/xr.json" <<EOF
         {
-            "tag": "vless-ws",
+            "tag": "vmess-xr",
             "listen": "::",
-            "port": ${vwpt},
-            "protocol": "vless",
+            "port": ${vmpt},
+            "protocol": "vmess",
             "settings": {
                 "clients": [
                     {
-                        "id": "${uuid}",
-                        "flow": "xtls-rprx-vision"
+                        "id": "${uuid}"
                     }
-                ],
-                "decryption": "none"
+                ]
             },
             "streamSettings": {
                 "network": "ws",
                 "security": "none",
                 "wsSettings": {
-                  "path": "${uuid}-vw"
+                  "path": "${uuid}-vm"
             }
         },
             "sniffing": {
@@ -162,8 +151,8 @@ echo "下载Cloudflared-argo最新正式版内核：$argocore"
 url="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$cpu"; out="$HOME/agsbx/cloudflared"; (command -v curl>/dev/null 2>&1 && curl -Lo "$out" -# --retry 2 "$url") || (command -v wget>/dev/null 2>&1 && timeout 3 wget -O "$out" --tries=2 "$url")
 chmod +x "$HOME/agsbx/cloudflared"
 fi
-argoport=$(cat "$HOME/agsbx/vwpt" 2>/dev/null)
-echo "Vless" > "$HOME/agsbx/vlvm"
+argoport=$(cat "$HOME/agsbx/vmpt" 2>/dev/null)
+echo "Vmess" > "$HOME/agsbx/vlvm"
 echo "$argoport" > "$HOME/agsbx/argoport.log"
 if [ -n "${agn}" ] && [ -n "${agk}" ]; then
 argoname='固定'
@@ -204,7 +193,7 @@ echo "所有节点名称前缀：$name"
 fi
 v4v6
 installxray
-addvlessws
+addvmessws
 finalizexray
 installargo
 }
@@ -274,13 +263,15 @@ sxname=$(cat "$HOME/agsbx/name" 2>/dev/null)
 echo "*********************************************************"
 echo "Argosbx脚本输出节点配置如下："
 echo
-# vless-ws 直连节点
-if grep vless-ws "$HOME/agsbx/xr.json" >/dev/null 2>&1; then
-echo "💣【 Vless-ws 】节点信息如下："
-vwpt=$(cat "$HOME/agsbx/vwpt")
-vw_link="vless://$uuid@$server_ip:$vwpt?encryption=none&flow=xtls-rprx-vision&type=ws&path=/$uuid-vw#${sxname}vl-ws-$hostname"
-echo "$vw_link" >> "$HOME/agsbx/jh.txt"
-echo "$vw_link"
+cfip() { echo $((RANDOM % 13 + 1)); }
+
+# vmess-ws 直连节点
+if grep vmess-xr "$HOME/agsbx/xr.json" >/dev/null 2>&1; then
+echo "💣【 Vmess-ws 】节点信息如下："
+vmpt=$(cat "$HOME/agsbx/vmpt")
+vm_link="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vm-ws-$hostname\", \"add\": \"$server_ip\", \"port\": \"$vmpt\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"www.bing.com\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vm_link" >> "$HOME/agsbx/jh.txt"
+echo "$vm_link"
 echo
 fi
 
@@ -288,51 +279,51 @@ fi
 argodomain=$(cat "$HOME/agsbx/sbargoym.log" 2>/dev/null)
 [ -z "$argodomain" ] && argodomain=$(grep -a trycloudflare.com "$HOME/agsbx/argo.log" 2>/dev/null | awk 'NR==2{print}' | awk -F// '{print $2}' | awk '{print $1}')
 if [ -n "$argodomain" ]; then
-echo "💣【 Vless-ws-tls-argo 】节点信息如下："
-echo "注：已应用您自定义的域名 ${cfip} 作为优选地址"
-vwatls_link1="vless://$uuid@${cfip}:443?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=tls&sni=$argodomain&fp=chrome#${sxname}vless-ws-tls-argo-$hostname-443"
-echo "$vwatls_link1" >> "$HOME/agsbx/jh.txt"
-vwatls_link2="vless://$uuid@${cfip}:8443?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=tls&sni=$argodomain&fp=chrome#${sxname}vless-ws-tls-argo-$hostname-8443"
-echo "$vwatls_link2" >> "$HOME/agsbx/jh.txt"
-vwatls_link3="vless://$uuid@${cfip}:2053?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=tls&sni=$argodomain&fp=chrome#${sxname}vless-ws-tls-argo-$hostname-2053"
-echo "$vwatls_link3" >> "$HOME/agsbx/jh.txt"
-vwatls_link4="vless://$uuid@${cfip}:2083?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=tls&sni=$argodomain&fp=chrome#${sxname}vless-ws-tls-argo-$hostname-2083"
-echo "$vwatls_link4" >> "$HOME/agsbx/jh.txt"
-vwatls_link5="vless://$uuid@${cfip}:2087?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=tls&sni=$argodomain&fp=chrome#${sxname}vless-ws-tls-argo-$hostname-2087"
-echo "$vwatls_link5" >> "$HOME/agsbx/jh.txt"
-vwatls_link6="vless://$uuid@[2606:4700::0]:2096?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=tls&sni=$argodomain&fp=chrome#${sxname}vless-ws-tls-argo-$hostname-2096"
-echo "$vwatls_link6" >> "$HOME/agsbx/jh.txt"
+echo "💣【 Vmess-ws-tls-argo 】节点信息如下："
+echo "注：默认地址 yg数字.ygkkk.dpdns.org 可自行更换优选IP域名"
+vmatls_link1="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-tls-argo-$hostname-443\", \"add\": \"yg1.ygkkk.dpdns.org\", \"port\": \"443\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"chrome\"}" | base64 -w0)"
+echo "$vmatls_link1" >> "$HOME/agsbx/jh.txt"
+vmatls_link2="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-tls-argo-$hostname-8443\", \"add\": \"yg2.ygkkk.dpdns.org\", \"port\": \"8443\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"chrome\"}" | base64 -w0)"
+echo "$vmatls_link2" >> "$HOME/agsbx/jh.txt"
+vmatls_link3="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-tls-argo-$hostname-2053\", \"add\": \"yg3.ygkkk.dpdns.org\", \"port\": \"2053\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"chrome\"}" | base64 -w0)"
+echo "$vmatls_link3" >> "$HOME/agsbx/jh.txt"
+vmatls_link4="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-tls-argo-$hostname-2083\", \"add\": \"yg4.ygkkk.dpdns.org\", \"port\": \"2083\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"chrome\"}" | base64 -w0)"
+echo "$vmatls_link4" >> "$HOME/agsbx/jh.txt"
+vmatls_link5="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-tls-argo-$hostname-2087\", \"add\": \"yg5.ygkkk.dpdns.org\", \"port\": \"2087\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"chrome\"}" | base64 -w0)"
+echo "$vmatls_link5" >> "$HOME/agsbx/jh.txt"
+vmatls_link6="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-tls-argo-$hostname-2096\", \"add\": \"[2606:4700::0]\", \"port\": \"2096\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"chrome\"}" | base64 -w0)"
+echo "$vmatls_link6" >> "$HOME/agsbx/jh.txt"
 echo
-echo "💣【 Vless-ws-argo (非TLS) 】节点信息如下："
-vwa_link7="vless://$uuid@${cfip}:80?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-80"
-echo "$vwa_link7" >> "$HOME/agsbx/jh.txt"
-vwa_link8="vless://$uuid@${cfip}:8080?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-8080"
-echo "$vwa_link8" >> "$HOME/agsbx/jh.txt"
-vwa_link9="vless://$uuid@${cfip}:8880?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-8880"
-echo "$vwa_link9" >> "$HOME/agsbx/jh.txt"
-vwa_link10="vless://$uuid@${cfip}:2052?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-2052"
-echo "$vwa_link10" >> "$HOME/agsbx/jh.txt"
-vwa_link11="vless://$uuid@${cfip}:2082?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-2082"
-echo "$vwa_link11" >> "$HOME/agsbx/jh.txt"
-vwa_link12="vless://$uuid@${cfip}:2086?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-2086"
-echo "$vwa_link12" >> "$HOME/agsbx/jh.txt"
-vwa_link13="vless://$uuid@[2400:cb00:2049::0]:2095?encryption=none&flow=xtls-rprx-vision&type=ws&host=$argodomain&path=/$uuid-vw&security=none#${sxname}vless-ws-argo-$hostname-2095"
-echo "$vwa_link13" >> "$HOME/agsbx/jh.txt"
+echo "💣【 Vmess-ws-argo (非TLS) 】节点信息如下："
+vma_link7="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-80\", \"add\": \"yg6.ygkkk.dpdns.org\", \"port\": \"80\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link7" >> "$HOME/agsbx/jh.txt"
+vma_link8="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-8080\", \"add\": \"yg7.ygkkk.dpdns.org\", \"port\": \"8080\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link8" >> "$HOME/agsbx/jh.txt"
+vma_link9="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-8880\", \"add\": \"yg8.ygkkk.dpdns.org\", \"port\": \"8880\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link9" >> "$HOME/agsbx/jh.txt"
+vma_link10="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-2052\", \"add\": \"yg9.ygkkk.dpdns.org\", \"port\": \"2052\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link10" >> "$HOME/agsbx/jh.txt"
+vma_link11="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-2082\", \"add\": \"yg10.ygkkk.dpdns.org\", \"port\": \"2082\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link11" >> "$HOME/agsbx/jh.txt"
+vma_link12="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-2086\", \"add\": \"yg11.ygkkk.dpdns.org\", \"port\": \"2086\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link12" >> "$HOME/agsbx/jh.txt"
+vma_link13="vmess://$(echo "{ \"v\": \"2\", \"ps\": \"${sxname}vmess-ws-argo-$hostname-2095\", \"add\": \"[2400:cb00:2049::0]\", \"port\": \"2095\", \"id\": \"$uuid\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/$uuid-vm\", \"tls\": \"\"}" | base64 -w0)"
+echo "$vma_link13" >> "$HOME/agsbx/jh.txt"
 
 sbtk=$(cat "$HOME/agsbx/sbargotoken.log" 2>/dev/null)
 if [ -n "$sbtk" ]; then
 nametn="Argo固定隧道token：$sbtk"
 fi
 argoshow=$(
-echo "Argo隧道端口正在使用Vless-ws主协议端口：$(cat $HOME/agsbx/argoport.log 2>/dev/null)
+echo "Argo隧道端口正在使用Vmess-ws主协议端口：$(cat $HOME/agsbx/argoport.log 2>/dev/null)
 Argo域名：$argodomain
 $nametn
 
-1、💣443端口的Vless-ws-tls-argo节点(优选IP与443系端口随便换)
-${vwatls_link1}
+1、💣443端口的Vmess-ws-tls-argo节点(优选IP与443系端口随便换)
+${vmatls_link1}
 
-2、💣80端口的Vless-ws-argo节点(优选IP与80系端口随便换)
-${vwa_link7}
+2、💣80端口的Vmess-ws-argo节点(优选IP与80系端口随便换)
+${vma_link7}
 "
 )
 fi
