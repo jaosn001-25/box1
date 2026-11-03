@@ -1,0 +1,12 @@
+services:
+  box:
+    build: .
+    ports:
+      - "3000"
+    environment:
+      - UUID=${UUID}
+      - VMPT=${VMPT}
+      - CFIP=${CFIP}
+      - ARGO=${ARGO}
+      - AGN=${AGN}
+      - AGK=${AGK}
