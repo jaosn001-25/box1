@@ -1,47 +1,45 @@
-const os = require('os');
 const http = require('http');
 const fs = require('fs');
-const net = require('net');
+const path = require('path');
 const { exec, execSync } = require('child_process');
-function ensureModule(name) {
-    try {
-        require.resolve(name);
-    } catch (e) {
-        console.log(`Module '${name}' not found. Installing...`);
-        execSync(`npm install ${name}`, { stdio: 'inherit' });
-    }
-}
-const { WebSocket, createWebSocketStream } = require('ws');
-const subtxt = `${process.env.HOME}/agsbx/jh.txt`;
-const NAME = process.env.NAME || os.hostname();
-const PORT = process.env.PORT || 3000;
-const uuid = process.env.uuid || '79411d85-b0dc-4cd2-b46c-01789a18c650';
-let ipCache = { ip: null, ts: 0 };
-const DOMAIN = process.env.DOMAIN || 'YOUR.DOMAIN';
-const vlessInfo = `vless://${uuid}@${DOMAIN}:443?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=ws&host=${DOMAIN}&path=%2F#Vl-ws-tls-${NAME}`;
-console.log(`vless-ws-tls节点分享: ${vlessInfo}`);
 
+const PORT = process.env.PORT || 3000;
+const workDir = path.join(process.env.HOME || '/root', 'xray');
+const base64File = path.join(workDir, 'base64.txt');
+const urlFile = path.join(workDir, 'url.txt');
+const uuidFile = path.join(workDir, 'uuid');
+
+let configuredUuid = process.env.UUID || process.env.uuid || '';
+let ipCache = { ip: null, ts: 0 };
+
+// 启动 start.sh 子进程
 fs.chmod("start.sh", 0o777, (err) => {
     if (err) {
-        console.error(`start.sh empowerment failed: ${err}`);
+        console.error(`[ERROR] start.sh chmod failed: ${err}`);
         return;
     }
-    console.log(`start.sh empowerment successful`);
+    console.log(`[INFO] start.sh empowerment successful, executing...`);
     const child = exec('bash start.sh');
-    child.stdout.on('data', (data) => console.log(data));
-    child.stderr.on('data', (data) => console.error(data));
+    child.stdout.on('data', (data) => process.stdout.write(data));
+    child.stderr.on('data', (data) => process.stderr.write(data));
     child.on('close', (code) => {
-        console.log(`child process exited with code ${code}`);
-        if (code === 0) {
-            console.log(`Proxy startup script completed`);
-        } else {
-            console.error(`Proxy startup failed; check the errors above`);
+        console.log(`[INFO] start.sh process exited with code ${code}`);
+        // 尝试更新启动后生成的实际 UUID
+        if (fs.existsSync(uuidFile)) {
+            configuredUuid = fs.readFileSync(uuidFile, 'utf8').trim();
+            console.log(`[INFO] Active subscription UUID: ${configuredUuid}`);
+            console.log(`[INFO] Subscription URL: http://<your-domain>:${PORT}/${configuredUuid}`);
         }
     });
 });
 
+// HTTP 服务与订阅分发
 const server = http.createServer((req, res) => {
-    if (req.url === '/') {
+    const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = reqUrl.pathname;
+
+    // 1. 根路径伪装站点 (用于健康检查与伪装)
+    if (pathname === '/') {
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Server': 'nginx/1.27.4'
@@ -57,83 +55,60 @@ body { width: 35em; margin: 0 auto; font-family: Tahoma, Verdana, Arial, sans-se
 </head>
 <body>
 <h1>Welcome to nginx!</h1>
-<p>If you see this page, the nginx web server is successfully installed and
-working. Further configuration is required.</p>
-
-<p>For online documentation and support please refer to
-<a href="http://nginx.org/">nginx.org</a>.<br/>
-Commercial support is available at
-<a href="http://nginx.com/">nginx.com</a>.</p>
-
+<p>If you see this page, the nginx web server is successfully installed and working. Further configuration is required.</p>
 <p><em>Thank you for using nginx.</em></p>
 </body>
 </html>`);
         return;
     }
 
-    if (req.url === `/${uuid}`) {
+    // 2. 节点订阅地址：/${uuid}
+    const currentUuid = configuredUuid || (fs.existsSync(uuidFile) ? fs.readFileSync(uuidFile, 'utf8').trim() : '');
+    if (currentUuid && pathname === `/${currentUuid}`) {
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        if (fs.existsSync(subtxt)) {
-            fs.readFile(subtxt, 'utf8', (err, data) => {
+        const wantRaw = reqUrl.searchParams.get('raw') === '1' || reqUrl.searchParams.get('plain') === '1';
+        const targetFile = wantRaw ? urlFile : base64File;
+
+        if (fs.existsSync(targetFile)) {
+            fs.readFile(targetFile, 'utf8', (err, data) => {
                 if (err) {
-                    console.error(err);
-                    res.end(`${vlessInfo}`);
+                    res.end('Error reading subscription file.');
                 } else {
-                    res.end(`${vlessInfo}\n${data}`);
+                    res.end(data.trim());
                 }
             });
+        } else if (fs.existsSync(urlFile)) {
+            fs.readFile(urlFile, 'utf8', (err, data) => {
+                res.end(data.trim());
+            });
         } else {
-            res.end(`${vlessInfo}`);
+            res.end('Generating nodes, please refresh in 5 seconds...');
         }
         return;
     }
 
-    if (req.url === `/${uuid}/ip`) {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
+    // 3. IP 查询地址：/${uuid}/ip
+    if (currentUuid && pathname === `/${currentUuid}/ip`) {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
         const now = Date.now();
         if (ipCache.ip && now - ipCache.ts < 86400000) {
             res.end(ipCache.ip);
         } else {
             try {
-                const ip = execSync('curl -s4m5 -k https://icanhazip.com 2>/dev/null', { timeout: 6000 }).toString().trim();
+                const ip = execSync('curl -s4m5 -k https://icanhazip.com 2>/dev/null || curl -s6m5 -k https://icanhazip.com 2>/dev/null', { timeout: 6000 }).toString().trim();
                 ipCache = { ip, ts: now };
                 res.end(ip);
             } catch (e) {
-                res.end(ipCache.ip || 'error');
+                res.end(ipCache.ip || 'unknown');
             }
         }
         return;
     }
-
 
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('404 Not Found');
 });
 
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
-
-const wss = new (require('ws').Server)({ server });
-const uuidkey = uuid.replace(/-/g, "");
-wss.on('connection', ws => {
-    ws.once('message', msg => {
-        const [VERSION] = msg;
-        const id = msg.slice(1, 17);
-        if (!id.every((v, i) => v == parseInt(uuidkey.substr(i * 2, 2), 16))) return;
-        let i = msg.slice(17, 18).readUInt8() + 19;
-        const port = msg.slice(i, i += 2).readUInt16BE(0);
-        const ATYP = msg.slice(i, i += 1).readUInt8();
-        const host = ATYP == 1 ? msg.slice(i, i += 4).join('.') :
-            (ATYP == 2 ? new TextDecoder().decode(msg.slice(i + 1, i += 1 + msg.slice(i, i + 1).readUInt8())) :
-                (ATYP == 3 ? msg.slice(i, i += 16)
-                    .reduce((s, b, i, a) => (i % 2 ? s.concat(a.slice(i - 1, i + 1)) : s), [])
-                    .map(b => b.readUInt16BE(0).toString(16)).join(':') : ''));
-        ws.send(new Uint8Array([VERSION, 0]));
-        const duplex = createWebSocketStream(ws);
-        net.connect({ host, port }, function () {
-            this.write(msg.slice(i));
-            duplex.on('error', () => { }).pipe(this).on('error', () => { }).pipe(duplex);
-        }).on('error', () => { });
-    }).on('error', () => { });
+    console.log(`[INFO] Web Server is running on port ${PORT}`);
 });

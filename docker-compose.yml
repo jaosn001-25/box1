@@ -1,12 +1,17 @@
 services:
-  box:
+  xray-go:
     build: .
     ports:
-      - "3000"
+      - "3000:3000"
     environment:
       - UUID=${UUID}
-      - VMPT=${VMPT}
+      - ARGO_DOMAIN=${ARGO_DOMAIN}
+      - ARGO_TOKEN=${ARGO_TOKEN}
+      - ARGO_PORT=${ARGO_PORT:-8081}
+      - ARGO_PROTOCOL=${ARGO_PROTOCOL:-quic}
       - CFIP=${CFIP}
-      - ARGO=${ARGO}
-      - AGN=${AGN}
-      - AGK=${AGK}
+      - CFIP_H2=${CFIP_H2:-www.visa.com.hk}
+      - CFIP_H3=${CFIP_H3:-www.teamviewer.com}
+      - REALITY_PORT=${REALITY_PORT}
+      - H3_PORT=${H3_PORT}
+    restart: unless-stopped
