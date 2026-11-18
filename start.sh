@@ -265,7 +265,7 @@ fi
 
 # 8. 启动 Cloudflare Argo 固定隧道
 if [ "$enable_argo" = true ]; then
-    argo_connections="1"
+    argo_connections="4"
     argo_proto_lower=$(echo "$argo_protocol" | tr '[:upper:]' '[:lower:]')
     if [ "$argo_proto_lower" = "http2" ]; then
         argo_connections="4"
